@@ -1,7 +1,7 @@
 import sapien
 import torch
 import numpy as np
-from typing import Dict, Any, Union, List
+from typing import Dict, Any, Union
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.utils.registration import register_env
 from mani_skill.utils.sapien_utils import look_at
@@ -10,17 +10,19 @@ from mani_skill.agents.robots import Fetch, Panda
 from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.sensors.camera import CameraConfig
 
+
 CARD_SIZE = [0.05, 0.08, 0.001]  # half-sizes for x, y, z (mm)
 
-@register_env("CardStack-v1", max_episode_steps=100)
-class CardStackEnv(BaseEnv):
+@register_env("TwoRobotCardStack-v1", max_episode_steps=100)
+class TwoRobotCardStackEnv(BaseEnv):
     """
     Task: Stack 3 cards on top of each other at a specified location.
     """
-    SUPPORTED_ROBOTS = ["panda", "fetch"]
+    SUPPORTED_ROBOTS = [('panda', 'panda')]
     agent: Union[Panda, Fetch]
 
-    def __init__(self, *args, robot_uids="panda", num_envs=1,
+    # multiple robots
+    def __init__(self, *args, robot_uids=("panda", "panda"), num_envs=1,
         reconfiguration_freq=None, n_cards=3, **kwargs,):
         
         # Set reconfiguration frequency - for single env, reconfigure every time
@@ -32,7 +34,13 @@ class CardStackEnv(BaseEnv):
             reconfiguration_freq=reconfiguration_freq, num_envs=num_envs, **kwargs,)
     
     def _load_agent(self, options):
-        return super()._load_agent(options, sapien.Pose(p=[0, 0, 0], q=[1, 0, 0, 0]))
+        # load two agents
+        # fake pose, just for initialization
+        # the actual pose will be set in _initialize_episode with table_scene
+        return super()._load_agent(options, [
+            sapien.Pose(p=[-0.615, -0.615, 0], q=[1, 0, 0, 0]),
+            sapien.Pose(p=[-0.615, 0, 0], q=[1, 0, 0, 0]),
+            ])
 
     def _load_scene(self, options: dict):
         self.table_scene = TableSceneBuilder(env=self)
@@ -59,7 +67,7 @@ class CardStackEnv(BaseEnv):
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         self.table_scene.initialize(env_idx)
-        
+
         with torch.device(self.device):
             b = len(env_idx)
             goal_pos = torch.zeros((b, 3))
@@ -115,7 +123,8 @@ class CardStackEnv(BaseEnv):
     def _get_obs_extra(self, info: Dict):
         """Additional observations for solving the task"""
         obs = dict(
-            tcp_pose=self.agent.tcp.pose.raw_pose,
+            tcp_pose=self.agent.agents[0].tcp.pose.raw_pose,
+            tcp_pose2=self.agent.agents[1].tcp.pose.raw_pose,
             goal_pos=self.goal_position,
         )
         
@@ -138,14 +147,24 @@ class CardStackEnv(BaseEnv):
             reward = torch.where(success, reward + 10.0, reward)
             
             # Reward for having cards close to goal
-            tcp_pose = self.agent.tcp.pose
-            tcp_pos = tcp_pose.p
             card_positions = torch.stack([card.pose.p for card in self.cards])
-            goal_distances = torch.linalg.norm(
-                card_positions[..., :2] - self.goal_position[:, :2], dim=-1)
+
+            # First robot
+            tcp_pose = self.agent.agents[0].tcp.pose
+            tcp_pos = tcp_pose.p
             tcp_to_cards = torch.linalg.norm(
                 card_positions - tcp_pos.unsqueeze(0), dim=-1)
             closest_card_to_tcp = torch.min(tcp_to_cards, dim=0)[0]
+
+            # Second robot
+            tcp_pose2 = self.agent.agents[1].tcp.pose
+            tcp_pos2 = tcp_pose2.p
+            tcp_to_cards2 = torch.linalg.norm(
+                card_positions - tcp_pos2.unsqueeze(0), dim=-1)
+            closest_card_to_tcp2 = torch.min(tcp_to_cards2, dim=0)[0]
+
+            goal_distances = torch.linalg.norm(
+                card_positions[..., :2] - self.goal_position[:, :2], dim=-1)
             
             for i in range(self.n_cards):
                 # Reward for getting cards to goal
@@ -155,7 +174,8 @@ class CardStackEnv(BaseEnv):
                     reward = torch.where(stacked[i], reward + 0.5, reward)
             
             # Reward for getting the TCP close to any card (to encourage picking)
-            reward += torch.exp(-10.0 * closest_card_to_tcp) * 0.1
+            reward += torch.exp(-10.0 * closest_card_to_tcp) * 0.1 \
+                   + torch.exp(-10.0 * closest_card_to_tcp2) * 0.1
             return reward
     
     def compute_normalized_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
