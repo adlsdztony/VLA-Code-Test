@@ -1,0 +1,8 @@
+# virtualenv
+.venv/
+
+# output
+videos/
+
+# cache
+__pycache__/
