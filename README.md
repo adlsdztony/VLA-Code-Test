@@ -24,7 +24,11 @@ According to this [issue](https://github.com/haosulab/ManiSkill/issues/776), `Re
 The save path of the video is changed to `./videos/` instead of `./` so in gitignore, `videos/` is added.
 
 ## Envs built
+All the environments are located in `src/envs/`.
 ### TwoRobotCardStack-v1
 - TwoRobotCardStack-v1 is built by adding an additional robot to the CardStack-v1.
 - `_get_obs_extra` is modified to add the observation of the second robot.
 - Reward function is modified to add a reward for the second robot.
+### CardStackWithRobotCamera-v1
+- CardStackWithRobotCamera-v1 is built by adding a camera to the CardStack-v1.
+- Rendering the video with the camera on the robot.
