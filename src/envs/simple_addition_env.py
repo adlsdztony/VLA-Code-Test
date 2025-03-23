@@ -129,6 +129,7 @@ class SimpleAdditionEnv(BaseEnv):
 
         self.table_scene = TableSceneBuilder(self, robot_init_qpos_noise=0)
         self.table_scene.build()
+        self.original_points = {}
 
         def bezier_points(points, num_points=5):
             """
@@ -193,7 +194,7 @@ class SimpleAdditionEnv(BaseEnv):
                 )  # indices of where the discontinuities are ie. [1,]: discont betw ind 1 and 2
                 self.continuous = False
 
-            # self.original_points[name] = np.concatenate((lines[:1, 0], lines[:, 1, :]))
+            self.original_points[name] = np.concatenate((lines[:1, 0], lines[:, 1, :]))
 
             midpoints = np.mean(lines, axis=1)  # midpoints of line segments
             box_half_ws = np.linalg.norm(lines[:, 1] - lines[:, 0], axis=1) / 2
@@ -268,10 +269,7 @@ class SimpleAdditionEnv(BaseEnv):
 
         self.svg_outlines = {key: create_svg_outline(name=key, base_color=np.array([10, 10, 10, 255]) / 255) for key in self.svgs.keys()}
 
-        # self.dots_dist = torch.ones((self.num_envs, 500), device=self.device) * -1
-        # self.ref_dist = torch.zeros(
-        #     (self.num_envs, self.original_points["0"].shape[0]), device=self.device
-        # ).to(bool)
+        self.dots_dist = torch.ones((self.num_envs, 500), device=self.device) * -1
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         self.draw_step = 0
@@ -297,6 +295,7 @@ class SimpleAdditionEnv(BaseEnv):
 
             # flip and rotate 90 degrees
             q = torch.tensor([0, np.sqrt(2) / 2, np.sqrt(2) / 2, 0])
+            rot_mat = quaternion_to_matrix(q).to(self.device)
 
             # self.goal_outline.set_pose(Pose.create_from_pq(p=target_pos))
             self.num1_outline.set_pose(Pose.create_from_pq(p=target_pos + torch.tensor([0, -0.4, 0.02]), q=q))
@@ -304,22 +303,24 @@ class SimpleAdditionEnv(BaseEnv):
             self.num2_outline.set_pose(Pose.create_from_pq(p=target_pos + torch.tensor([0, 0, 0.02]), q=q))
             self.svg_outlines["="].set_pose(Pose.create_from_pq(p=target_pos + torch.tensor([0, 0.2, 0.02]), q=q))
 
-            # if hasattr(self, "vertices"):
-            #     self.points[env_idx] = torch.from_numpy(
-            #         np.tile(self.original_points[str(self.sum)], (b, 1, 1))
-            #     ).to(
-            #         self.device
-            #     )  # b, 3, 3
-            # else:
-            #     self.points = torch.from_numpy(
-            #         np.tile(self.original_points[str(self.sum)], (b, 1, 1))
-            #     ).to(self.device)
+            if hasattr(self, "vertices"):
+                self.points[env_idx] = torch.from_numpy(
+                    np.tile(self.original_points[str(self.sum)], (b, 1, 1))
+                ).to(
+                    self.device
+                )  # b, 3, 3
+            else:
+                self.points = torch.from_numpy(
+                    np.tile(self.original_points[str(self.sum)], (b, 1, 1))
+                ).to(self.device)
 
-            # self.points[env_idx] += target_pos.unsqueeze(1)
-            # self.dots_dist[env_idx] = torch.ones((self.num_envs, 500)) * -1
-            # self.ref_dist[env_idx] = torch.zeros(
-            #     (self.num_envs, self.original_points[str(self.sum)].shape[0])
-            # ).to(bool)
+            self.points[env_idx] = (
+                rot_mat.double() @ self.points[env_idx].transpose(-1, -2).double()
+            ).transpose(
+                -1, -2
+            )  # rotation matrix
+            self.points[env_idx] += (target_pos+torch.tensor([0, 0.4, 0.02])).unsqueeze(1)
+            self.dots_dist[env_idx] = torch.ones((self.num_envs, 500)) * -1
 
             for dot in self.dots:
                 # initially spawn dots in the table so they aren't seen
@@ -370,34 +371,36 @@ class SimpleAdditionEnv(BaseEnv):
         return obs
 
     def success_check(self):
-        # if self.draw_step > 0:
-        #     current_dot = self.dots[self.draw_step - 1].pose.p.reshape(
-        #         self.num_envs, 1, 3
-        #     )  # b,3
-        #     z_mask = current_dot[:, :, 2] < 0
-        #     dist = (
-        #         torch.sqrt(
-        #             torch.sum(
-        #                 (current_dot[:, :, None, :2] - self.points[:, None, :, :2])
-        #                 ** 2,
-        #                 dim=-1,
-        #             )
-        #         )
-        #         < self.THRESHOLD
-        #     )
-        #     self.ref_dist = torch.logical_or(
-        #         self.ref_dist, (1 - z_mask.int()) * dist.reshape((self.num_envs, -1))
-        #     )
-        #     self.dots_dist[:, self.draw_step - 1] = torch.where(
-        #         z_mask, -1, torch.any(dist, dim=-1)
-        #     ).reshape(
-        #         self.num_envs,
-        #     )
+        if self.draw_step > 0:
+            current_dot = self.dots[self.draw_step - 1].pose.p.reshape(
+                self.num_envs, 1, 3
+            )  # b,3
+            z_mask = current_dot[:, :, 2] < 0
+            dist = (
+                torch.sqrt(
+                    torch.sum(
+                        (current_dot[:, :, None, :2] - self.points[:, None, :, :2])
+                        ** 2,
+                        dim=-1,
+                    )
+                )
+                < self.THRESHOLD
+            )
+            reshaped = dist.reshape((self.num_envs, -1))
+            self.ref_dist = torch.zeros_like(reshaped, dtype=torch.bool, device=self.device)
+            self.ref_dist = torch.logical_or(
+                self.ref_dist, (1 - z_mask.int()) * reshaped
+            )
+            self.dots_dist[:, self.draw_step - 1] = torch.where(
+                z_mask, -1, torch.any(dist, dim=-1)
+            ).reshape(
+                self.num_envs,
+            )
 
-        #     mask = self.dots_dist > -1
-        #     # for valid drawn points
-        #     return torch.logical_and(
-        #         torch.all(self.dots_dist[mask], dim=-1),
-        #         torch.all(self.ref_dist, dim=-1),
-        #     )
+            mask = self.dots_dist > -1
+            # for valid drawn points
+            return torch.logical_and(
+                torch.all(self.dots_dist[mask], dim=-1),
+                torch.all(self.ref_dist, dim=-1),
+            )
         return torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
