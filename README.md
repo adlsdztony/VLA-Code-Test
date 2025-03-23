@@ -32,3 +32,7 @@ All the environments are located in `src/envs/`.
 ### CardStackWithRobotCamera-v1
 - CardStackWithRobotCamera-v1 is built by adding a camera to the CardStack-v1.
 - Rendering the video with the camera on the robot.
+### SimpleAddition-v1
+- SimpleAddition-v1 is built on DrawSVG-v1.
+- The task is to add two numbers and write the result on the whiteboard.
+- An extra dependancy `svgpathtools` should be installed to run this environment.

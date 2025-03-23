@@ -8,5 +8,6 @@ dependencies = [
     "mani-skill>=3.0.0b20",
     "sapien>=3.0.0b1",
     "setuptools>=77.0.3",
+    "svgpathtools>=1.6.1",
     "torch>=2.6.0",
 ]
