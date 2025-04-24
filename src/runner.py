@@ -8,6 +8,7 @@ from examples.card_stack_env import CardStackEnv  # noqa: F401
 from envs.two_robot_card_stack_env import TwoRobotCardStackEnv  # noqa: F401
 from envs.card_stack_env_with_robot_camera import CardStackWithRobotCameraEnv  # noqa: F401
 from envs.simple_addition_env import SimpleAdditionEnv  # noqa: F401
+from envs.dig_treasure_env import DigTreasureEnv  # noqa: F401
 
 def generate_videos(env_id, n_episodes=10, max_steps_per_episode=100):
     """
@@ -34,4 +35,4 @@ def generate_videos(env_id, n_episodes=10, max_steps_per_episode=100):
     env.close()
 
 if __name__ == "__main__":
-    generate_videos("SimpleAddition-v1", n_episodes=2)
+    generate_videos("DigTreasure-v1", n_episodes=2)
