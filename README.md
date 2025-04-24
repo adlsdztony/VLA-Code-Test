@@ -36,3 +36,12 @@ All the environments are located in `src/envs/`.
 - SimpleAddition-v1 is built on DrawSVG-v1.
 - The task is to add two numbers and write the result on the whiteboard.
 - An extra dependancy `svgpathtools` should be installed to run this environment.
+
+<!-- # Name	Description	Objects	Atomic Actions	Reasoning Process	Sim2Real Gap
+# CardSelection-v1	The robot must identify the target card (marked with green underneath) from a 3×4 grid of 12 cards and move it to a designated blue target area. Other cards have yellow (near target) or red (no target nearby) markers as hints.	<ul><li>12 gray movable cards</li><li>12 static colored markers</li><li>1 blue target marker</li></ul>	<ul><li>Observe card colors</li><li>Grasp card</li><li>Move card</li><li>Place card</li></ul>	1. Observation Phase: Scan the card grid to locate the green marker (target). If not directly visible, prioritize yellow-marked cards (proximity hints).
+# 2. Decision Phase: Move the green-marked card first; if unavailable, explore yellow-marked cards and their surroundings.
+# 3. Execution Phase:
+# a) Precise grasping of the target card without disturbing others.
+# b) Smooth transportation to the blue target zone.
+# c) Ensure full coverage of the target area with no collisions.
+# 4. Verification: Confirm only the target card is placed correctly.	<ul><li>Card physics (thickness/flexibility) may differ in reality.</li><li>Visual marker recognition gaps (camera vs. simulation).</li><li>Real-world grid alignment errors.</li><li>Multi-card interaction physics (e.g., sliding/friction).</li></ul> -->
